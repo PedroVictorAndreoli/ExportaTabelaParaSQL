@@ -10,11 +10,15 @@ Este projeto contém dois scripts principais que automatizam a conversão de dad
 
 ### `main.py` - Conversor de CSV para SQL
 - Converte arquivos CSV para scripts SQL
-- Suporta arquivos Excel (.xlsx)
 - Detecta automaticamente tipos de dados (INT, BIGINT, FLOAT, BIT, DATETIME, NVARCHAR)
 - Lida com diferentes formatos de CSV (delimitadores, aspas, escape characters)
-- Divide arquivos SQL em múltiplos arquivos quando ultrapassam 2.2 MB
+- Divide arquivos SQL em múltiplos arquivos quando ultrapassam 3 MB
 - Trata valores nulos e caracteres especiais
+- Remove automaticamente colunas vazias
+- Renomeia colunas sem nome automaticamente
+- Organiza comandos SQL: todos os CREATE TABLE primeiro, depois todos os INSERT
+- Gera script mestre `EXECUTAR_TODOS.sql` para facilitar execução no SSMS
+- Interface com feedback visual detalhado do processamento
 
 ### `jsons.py` - Conversor de JSON para SQL
 - Converte arquivos JSON para scripts SQL
@@ -36,8 +40,8 @@ pip install pandas
 Edite as seguintes variáveis no início do arquivo:
 
 ```python
-pasta = r"C:\Users\Meu Computador\Documents\DADOS\anexos"  # Pasta com arquivos CSV
-LIMITE_TAMANHO = int(2.2 * 1024 * 1024)  # Tamanho máximo por arquivo SQL (2.2 MB)
+pasta = r"D:\aaaaaa\BKP ANDIARA MATRIZ"  # Pasta com arquivos CSV
+LIMITE_BYTES = 3 * 1024 * 1024  # Tamanho máximo por arquivo SQL (3 MB)
 ```
 
 ### jsons.py
@@ -59,8 +63,10 @@ python main.py
 
 O script irá:
 1. Ler todos os arquivos `.csv` da pasta configurada
-2. Gerar arquivos `backup_1.sql`, `backup_2.sql`, etc.
-3. Cada arquivo conterá comandos CREATE TABLE e INSERT INTO
+2. Gerar arquivos `backup_parte_001.sql`, `backup_parte_002.sql`, etc.
+3. Criar um arquivo mestre `EXECUTAR_TODOS.sql` para facilitar a execução
+4. Todos os CREATE TABLE são gerados primeiro, seguidos pelos INSERT INTO
+5. Exibir feedback detalhado do processamento no console
 
 ### Convertendo arquivos JSON:
 
@@ -110,20 +116,46 @@ O script `main.py` detecta automaticamente os tipos SQL:
 | Datetime | DATETIME |
 | String | NVARCHAR(MAX) |
 
-## ⚙️ Tratamento de Erros
+## ⚙️ Tratamento de Erros e Recursos Especiais
 
-- **CSV mal formatados**: O script tenta múltiplas estratégias de leitura
-- **Valores nulos**: Convertidos para `NULL` em SQL
+### main.py
+- **CSV mal formatados**: Tenta múltiplas estratégias de leitura (csv.Sniffer, leitura manual)
+- **Valores nulos ou vazios**: Convertidos para `NULL` em SQL
 - **Aspas simples**: Escapadas automaticamente (`'` → `''`)
 - **Tabelas vazias**: Ignoradas durante a conversão
+- **Colunas vazias**: Removidas automaticamente
+- **Colunas sem nome**: Renomeadas automaticamente para `Coluna_1`, `Coluna_2`, etc.
+- **Caracteres especiais em nomes**: Colchetes `[]` removidos, espaços substituídos por underscore
+- **Feedback visual**: Mostra progresso com ícones (✓, ❌, ⚠) e contadores detalhados
+
+### jsons.py
+- **Valores nulos**: Convertidos para `NULL` em SQL
+- **Aspas simples**: Escapadas automaticamente
+- **Valores muito grandes**: Truncados automaticamente
 
 ## 📂 Arquivos de Saída
 
+### main.py
 Os arquivos SQL gerados:
-- São divididos automaticamente ao atingir 2.2 MB
+- **`backup_parte_001.sql`, `backup_parte_002.sql`, etc.**: Arquivos divididos automaticamente ao atingir 3 MB
+- **`EXECUTAR_TODOS.sql`**: Script mestre que executa todos os arquivos de backup em ordem
 - Incluem comandos `DROP TABLE IF EXISTS` para recriação limpa
 - Usam codificação UTF-8
 - Contêm comentários identificando cada tabela
+- Organização: todos os CREATE TABLE primeiro, depois todos os INSERT INTO
+
+### Como Executar no SQL Server:
+1. Abra o SQL Server Management Studio (SSMS)
+2. Edite o arquivo `EXECUTAR_TODOS.sql`
+3. Altere `SeuBancoDeDados` para o nome correto do banco
+4. Ative o modo SQLCMD: **Query > SQLCMD Mode**
+5. Execute o script (F5)
+
+### jsons.py
+Os arquivos SQL gerados:
+- São divididos automaticamente ao atingir 2.2 MB
+- Criam tabelas relacionadas para estruturas hierárquicas
+- Geram chaves primárias e estrangeiras automaticamente
 
 ## 🤝 Contribuições
 

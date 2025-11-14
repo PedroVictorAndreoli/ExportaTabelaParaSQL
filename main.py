@@ -4,21 +4,11 @@ import datetime
 import csv
 
 # Caminho da pasta com os arquivos CSV
-pasta = r"C:\Users\Meu Computador\Documents\DADOS\anexos"
+pasta = r"D:\aaaaaa\BKP ANDIARA MATRIZ"
 arquivos = [f for f in os.listdir(pasta) if f.endswith('.csv')]
 
-LIMITE_TAMANHO = int(2.2 * 1024 * 1024)  # 2,2 MB em bytes
-contador_arquivo = 1
-tamanho_atual = 0
-
-
-def abrir_novo_arquivo():
-    global contador_arquivo, tamanho_atual
-    nome_arquivo = f"backup_{contador_arquivo}.sql"
-    contador_arquivo += 1
-    tamanho_atual = 0
-    return open(nome_arquivo, "w", encoding="utf-8")
-
+# Limite de 3MB por arquivo SQL
+LIMITE_BYTES = 3 * 1024 * 1024
 
 def tipo_sql(serie):
     if pd.api.types.is_integer_dtype(serie):
@@ -34,138 +24,230 @@ def tipo_sql(serie):
     else:
         return "NVARCHAR(MAX)"
 
-
 def ler_csv_corretamente(caminho):
-    """Lê o CSV corretamente lidando com o formato específico"""
     try:
-        # Primeira tentativa: usar o módulo csv do Python para entender a estrutura
         with open(caminho, 'r', encoding='utf-8') as f:
-            # Detecta o dialeto do CSV
             sample = f.read(1024)
             f.seek(0)
             sniffer = csv.Sniffer()
             dialect = sniffer.sniff(sample)
-            
-            # Lê o CSV
             reader = csv.reader(f, dialect)
             linhas = list(reader)
-        
-        if linhas:
-            # Cria DataFrame a partir das linhas processadas
-            df = pd.DataFrame(linhas[1:], columns=linhas[0])
-            return df
-            
-    except Exception as e:
-        print(f"Erro na leitura avançada: {e}")
-    
-    # Fallback: tenta abordagem mais direta
-    try:
-        df = pd.read_csv(caminho, encoding="utf-8", sep=',', quotechar='"', 
-                        doublequote=True, escapechar=None, header=0)
-        return df
+            if linhas:
+                df = pd.DataFrame(linhas[1:], columns=linhas[0])
+                return df
     except:
         pass
     
-    # Última tentativa: ler como texto e processar manualmente
+    try:
+        return pd.read_csv(caminho, encoding="utf-8", sep=',', quotechar='"', 
+                          doublequote=True, escapechar=None, header=0)
+    except:
+        pass
+    
     try:
         with open(caminho, 'r', encoding='utf-8') as f:
             content = f.read()
-        
-        # Processa manualmente se necessário
-        linhas = content.strip().split('\n')
-        if linhas:
-            # Remove aspas externas e split por vírgula
-            dados_processados = []
-            for linha in linhas:
-                # Remove aspas do início e fim, depois split
-                linha_limpa = linha.strip().strip('"')
-                campos = [campo.strip().strip('"') for campo in linha_limpa.split('","')]
-                dados_processados.append(campos)
-            
-            if dados_processados:
+            linhas = content.strip().split('\n')
+            if linhas:
+                dados_processados = []
+                for linha in linhas:
+                    linha_limpa = linha.strip().strip('"')
+                    campos = [campo.strip().strip('"') for campo in linha_limpa.split('","')]
+                    dados_processados.append(campos)
                 df = pd.DataFrame(dados_processados[1:], columns=dados_processados[0])
                 return df
-    except Exception as e:
-        print(f"Erro no processamento manual: {e}")
+    except:
+        pass
     
     return None
 
+# Controle de arquivos SQL
+arquivos_sql = []
+parte_atual = 1
+tamanho_atual = 0
+arquivo_sql = None
 
-out_sql = abrir_novo_arquivo()
+def abrir_novo_arquivo():
+    global arquivo_sql, parte_atual, tamanho_atual
+    if arquivo_sql:
+        arquivo_sql.close()
+    nome_arquivo = f"backup_parte_{parte_atual:03d}.sql"
+    arquivo_sql = open(nome_arquivo, "w", encoding="utf-8")
+    arquivos_sql.append(nome_arquivo)
+    tamanho_atual = 0
+    print(f"✓ Criado: {nome_arquivo}")
+    return arquivo_sql
+
+def escrever_sql(texto):
+    global tamanho_atual, parte_atual, arquivo_sql
+    
+    if arquivo_sql is None:
+        abrir_novo_arquivo()
+    
+    tamanho_texto = len(texto.encode('utf-8'))
+    
+    if tamanho_atual + tamanho_texto > LIMITE_BYTES:
+        parte_atual += 1
+        abrir_novo_arquivo()
+    
+    arquivo_sql.write(texto)
+    tamanho_atual += tamanho_texto
+
+
+# LISTAS PARA CRIAR NA ORDEM CORRETA
+creates = []        # Lista de CREATE TABLE
+all_inserts = []    # Lista com tuplas (tabela, lista_de_inserts)
+
+
+print("Iniciando geração dos arquivos SQL...\n")
+print(f"Total de arquivos CSV encontrados: {len(arquivos)}\n")
+
+tabelas_processadas = 0
 
 for arquivo in arquivos:
     nome_tabela = os.path.splitext(arquivo)[0]
     caminho = os.path.join(pasta, arquivo)
-
-    # Detecta tipo de arquivo
+    
+    print(f"\n{'='*60}")
+    print(f"Arquivo: {arquivo}")
+    print(f"{'='*60}")
+    
     if arquivo.endswith(".csv"):
         df = ler_csv_corretamente(caminho)
         if df is None:
-            print(f"Erro: Não foi possível ler o arquivo '{arquivo}' corretamente")
+            print(f"❌ Erro: Não foi possível ler '{arquivo}'")
             continue
-    elif arquivo.endswith(".xlsx"):
-        df = pd.read_excel(caminho)
+        print(f"✓ CSV lido com sucesso: {len(df)} linhas")
     else:
+        print(f"⚠ Ignorado (não é CSV)")
         continue
-
+    
     if df.empty:
-        print(f"Tabela '{nome_tabela}' ignorada (sem registros).")
+        print(f"⚠ Tabela ignorada (sem registros)")
         continue
-
-    # Verifica se as colunas foram lidas corretamente
-    print(f"Processando {nome_tabela}: {len(df.columns)} colunas")
-    print(f"Colunas: {list(df.columns)}")
-
-    # CREATE TABLE
-    linhas_create = []
-    linhas_create.append(f"-- Tabela: {nome_tabela}\n")
-    linhas_create.append(f"IF OBJECT_ID(N'{nome_tabela}', N'U') IS NOT NULL DROP TABLE [{nome_tabela}];\n")
-    linhas_create.append(f"CREATE TABLE [{nome_tabela}] (\n")
-
-    colunas = []
+    
+    colunas_antes = len(df.columns)
+    df = df.dropna(axis=1, how='all')
+    colunas_depois = len(df.columns)
+    
+    if colunas_antes != colunas_depois:
+        print(f"⚠ Removidas {colunas_antes - colunas_depois} colunas vazias")
+    
+    if df.empty or len(df.columns) == 0:
+        print(f"⚠ Tabela ignorada (sem colunas válidas)")
+        continue
+    
+    print(f"✓ Processando: {len(df)} registros, {len(df.columns)} colunas")
+    
+    novas_colunas = []
+    contador_vazio = 1
+    
     for coluna in df.columns:
-        # Limpa o nome da coluna
         coluna_limpa = str(coluna).strip().strip('"')
+        
+        if not coluna_limpa:
+            coluna_limpa = f"Coluna_{contador_vazio}"
+            contador_vazio += 1
+        
+        coluna_limpa = coluna_limpa.replace('[', '').replace(']', '').replace(' ', '_')
+        
+        novas_colunas.append(coluna_limpa)
+    
+    df.columns = novas_colunas
+    
+    create_sql = f"\n-- Tabela: {nome_tabela}\n"
+    create_sql += f"IF OBJECT_ID(N'{nome_tabela}', N'U') IS NOT NULL DROP TABLE [{nome_tabela}];\n"
+    create_sql += f"CREATE TABLE [{nome_tabela}] (\n"
+    
+    colunas_sql = []
+    for coluna in df.columns:
         tipo = tipo_sql(df[coluna])
-        colunas.append(f"    [{coluna_limpa}] {tipo}")
-    linhas_create.append(",\n".join(colunas))
-    linhas_create.append("\n);\n\n")
-
-    for linha in linhas_create:
-        linha_bytes = linha.encode("utf-8")
-        if tamanho_atual + len(linha_bytes) > LIMITE_TAMANHO:
-            out_sql.close()
-            out_sql = abrir_novo_arquivo()
-        out_sql.write(linha)
-        tamanho_atual += len(linha_bytes)
-
-    # INSERT INTO
+        colunas_sql.append(f"    [{coluna}] {tipo}")
+    
+    create_sql += ",\n".join(colunas_sql)
+    create_sql += "\n);\n\n"
+    
+    creates.append(create_sql)
+    tabelas_processadas += 1
+    
+    inserts_sql = []
+    total_registros = 0
+    
     for _, row in df.iterrows():
+        total_registros += 1
         valores = []
+        
         for v in row:
-            if pd.isnull(v):
+            if pd.isnull(v) or v == '' or str(v).strip() == '':
                 valores.append("NULL")
+            elif isinstance(v, (int, float)):
+                valores.append(str(v))
             elif isinstance(v, str):
-                # Remove aspas extras e escapa aspas simples
-                v_limpo = v.strip().strip('"')
-                v_limpo = v_limpo.replace("'", "''")
+                v_limpo = v.strip().strip('"').replace("'", "''")
                 valores.append("'" + v_limpo + "'")
             elif isinstance(v, (pd.Timestamp, datetime.datetime, datetime.date)):
                 if isinstance(v, datetime.date) and not isinstance(v, datetime.datetime):
                     valores.append(f"'{v.strftime('%Y-%m-%d')}'")
                 else:
-                    valores.append(f"'{v.strftime('%Y%m%d %H:%M:%S')}'")
+                    valores.append(f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'")
             else:
-                valores.append(str(v))
+                valores.append("'" + str(v).replace("'", "''") + "'")
+        
+        inserts_sql.append(f"INSERT INTO [{nome_tabela}] VALUES ({', '.join(valores)});\n")
+    
+    all_inserts.append((nome_tabela, inserts_sql))
+    print(f"✓ {total_registros} INSERTs preparados")
 
-        linha_insert = f"INSERT INTO [{nome_tabela}] VALUES ({', '.join(valores)});\n"
-        linha_bytes = linha_insert.encode("utf-8")
-        if tamanho_atual + len(linha_bytes) > LIMITE_TAMANHO:
-            out_sql.close()
-            out_sql = abrir_novo_arquivo()
-        out_sql.write(linha_insert)
-        tamanho_atual += len(linha_bytes)
 
-    out_sql.write("\n")
+# ========================
+# AGORA ESCREVE OS ARQUIVOS
+# ========================
 
-out_sql.close()
+print("\n\nEscrevendo TODOS os CREATE TABLE primeiro...\n")
+for create in creates:
+    escrever_sql(create)
+
+print("\nEscrevendo TODOS os INSERTs...\n")
+for nome_tabela, inserts in all_inserts:
+    for ins in inserts:
+        escrever_sql(ins)
+    escrever_sql(f"-- Total: {len(inserts)} registros da tabela {nome_tabela}\n\n")
+
+if arquivo_sql:
+    arquivo_sql.close()
+
+print(f"\n\n{'='*60}")
+print("✓ CONCLUÍDO!")
+print(f"✓ Tabelas processadas: {tabelas_processadas}")
+print(f"✓ Arquivos SQL gerados: {len(arquivos_sql)}")
+print(f"{'='*60}\n")
+
+
+# CRIA SCRIPT MESTRE
+print("Gerando script mestre EXECUTAR_TODOS.sql ...\n")
+
+caminho_completo = os.path.abspath(".")
+
+with open("EXECUTAR_TODOS.sql", "w", encoding="utf-8") as master:
+    master.write("-- ========================================\n")
+    master.write("-- SCRIPT MESTRE - EXECUTA TODOS OS BACKUPS\n")
+    master.write("-- ========================================\n\n")
+    master.write("USE [SeuBancoDeDados]; -- ALTERE ESTE NOME\nGO\n\n")
+    
+    for i, arq_sql in enumerate(arquivos_sql, 1):
+        caminho_arquivo = os.path.join(caminho_completo, arq_sql)
+        master.write(f"-- Parte {i}/{len(arquivos_sql)}\n")
+        master.write(f":r \"{caminho_arquivo}\"\nGO\n\n")
+
+print("✓ Criado: EXECUTAR_TODOS.sql")
+print(f"\n📁 Caminho dos arquivos: {caminho_completo}")
+print("\n" + "="*60)
+print("COMO EXECUTAR:")
+print("="*60)
+print("1. Abra o SQL Server Management Studio (SSMS)")
+print("2. Edite o arquivo EXECUTAR_TODOS.sql")
+print("3. Altere 'SeuBancoDeDados' para o nome correto")
+print("4. Vá em: Query > SQLCMD Mode (ative)")
+print("5. Execute o script (F5)")
+print("="*60)

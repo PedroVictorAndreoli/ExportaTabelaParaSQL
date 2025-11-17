@@ -1,7 +1,11 @@
 import csv
 import os
+from dotenv import load_dotenv
 
-pasta = r"CAMINHO"
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
+
+pasta = os.getenv('UTIL_PASTA', r"CAMINHO")
 
 arquivos_csv = [f for f in os.listdir(pasta) if f.lower().endswith(".csv")]
 

@@ -1,11 +1,15 @@
 import os
 import json
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
 
 # Configurações
-INPUT_FOLDER = "C:/Users/Meu Computador/Documents/backup(1)"  # pasta com arquivos JSON
-OUTPUT_BASE = "output"
+INPUT_FOLDER = os.getenv('JSON_INPUT_FOLDER', "C:/Users/Meu Computador/Documents/backup(1)")
+OUTPUT_BASE = os.getenv('JSON_OUTPUT_BASE', "output")
 OUTPUT_EXT = ".sql"
-LIMITE_TAMANHO = int(2.20 * 1024 * 1024)  # 2,20 MB
+LIMITE_TAMANHO = int(os.getenv('JSON_LIMITE_TAMANHO', int(2.20 * 1024 * 1024)))
 
 # Variáveis globais
 table_definitions = {}

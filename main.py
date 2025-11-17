@@ -2,13 +2,17 @@ import pandas as pd
 import os
 import datetime
 import csv
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
 
 # Caminho da pasta com os arquivos CSV
-pasta = r"D:\aaaaaa\BKP ANDIARA MATRIZ"
+pasta = os.getenv('CSV_PASTA', r"D:\aaaaaa\BKP ANDIARA MATRIZ")
 arquivos = [f for f in os.listdir(pasta) if f.endswith('.csv')]
 
 # Limite de 3MB por arquivo SQL
-LIMITE_BYTES = 3 * 1024 * 1024
+LIMITE_BYTES = int(os.getenv('CSV_LIMITE_BYTES', 3 * 1024 * 1024))
 
 def tipo_sql(serie):
     if pd.api.types.is_integer_dtype(serie):

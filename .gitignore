@@ -1,0 +1,31 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# SQL output files
+*.sql
+backup_*.sql
+output_*.sql
+EXECUTAR_TODOS.sql
+
+# CSV output files
+*_utf8.csv
+*_limpo.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

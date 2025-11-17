@@ -1,8 +1,12 @@
 import csv
 import os
 import chardet
+from dotenv import load_dotenv
 
-pasta = r"D:\"
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
+
+pasta = os.getenv('UTIL_PASTA', r"D:\\")
 
 arquivos_csv = [f for f in os.listdir(pasta) if f.lower().endswith(".csv")]
 

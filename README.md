@@ -83,7 +83,6 @@ JSON_LIMITE_TAMANHO=2306867
 UTIL_PASTA=D:\
 ```
 
-### Variáveis de Ambiente Disponíveis
 
 ### Variáveis de Ambiente Disponíveis
 

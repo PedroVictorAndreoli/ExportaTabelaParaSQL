@@ -9,10 +9,28 @@ load_dotenv()
 
 # Caminho da pasta com os arquivos CSV
 pasta = os.getenv('CSV_PASTA', r"D:\aaaaaa\BKP ANDIARA MATRIZ")
-arquivos = [f for f in os.listdir(pasta) if f.endswith('.csv')]
 
-# Limite de 3MB por arquivo SQL
+# Pasta onde os arquivos SQL serão gerados
+pasta_saida = os.getenv('SQL_PASTA_SAIDA', r"D:\aaaaaa\SQL_GERADOS")
+
+# Limite de tamanho por arquivo SQL
 LIMITE_BYTES = int(os.getenv('CSV_LIMITE_BYTES', 3 * 1024 * 1024))
+
+# Cria pasta de saída se não existir
+os.makedirs(pasta_saida, exist_ok=True)
+
+# Limpa arquivos SQL antigos da pasta
+for f in os.listdir(pasta_saida):
+    if f.endswith(".sql"):
+        try:
+            os.remove(os.path.join(pasta_saida, f))
+        except:
+            pass
+
+print(f"✓ Pasta limpa: {pasta_saida}")
+
+# Lista arquivos CSV
+arquivos = [f for f in os.listdir(pasta) if f.endswith('.csv')]
 
 def tipo_sql(serie):
     if pd.api.types.is_integer_dtype(serie):
@@ -66,7 +84,7 @@ def ler_csv_corretamente(caminho):
     
     return None
 
-# Controle de arquivos SQL
+# Controle dos arquivos SQL
 arquivos_sql = []
 parte_atual = 1
 tamanho_atual = 0
@@ -76,7 +94,7 @@ def abrir_novo_arquivo():
     global arquivo_sql, parte_atual, tamanho_atual
     if arquivo_sql:
         arquivo_sql.close()
-    nome_arquivo = f"backup_parte_{parte_atual:03d}.sql"
+    nome_arquivo = os.path.join(pasta_saida, f"backup_parte_{parte_atual:03d}.sql")
     arquivo_sql = open(nome_arquivo, "w", encoding="utf-8")
     arquivos_sql.append(nome_arquivo)
     tamanho_atual = 0
@@ -98,11 +116,9 @@ def escrever_sql(texto):
     arquivo_sql.write(texto)
     tamanho_atual += tamanho_texto
 
-
 # LISTAS PARA CRIAR NA ORDEM CORRETA
-creates = []        # Lista de CREATE TABLE
-all_inserts = []    # Lista com tuplas (tabela, lista_de_inserts)
-
+creates = []
+all_inserts = []
 
 print("Iniciando geração dos arquivos SQL...\n")
 print(f"Total de arquivos CSV encontrados: {len(arquivos)}\n")
@@ -203,11 +219,6 @@ for arquivo in arquivos:
     all_inserts.append((nome_tabela, inserts_sql))
     print(f"✓ {total_registros} INSERTs preparados")
 
-
-# ========================
-# AGORA ESCREVE OS ARQUIVOS
-# ========================
-
 print("\n\nEscrevendo TODOS os CREATE TABLE primeiro...\n")
 for create in creates:
     escrever_sql(create)
@@ -227,22 +238,21 @@ print(f"✓ Tabelas processadas: {tabelas_processadas}")
 print(f"✓ Arquivos SQL gerados: {len(arquivos_sql)}")
 print(f"{'='*60}\n")
 
-
 # CRIA SCRIPT MESTRE
 print("Gerando script mestre EXECUTAR_TODOS.sql ...\n")
 
-caminho_completo = os.path.abspath(".")
+master_path = os.path.join(pasta_saida, "EXECUTAR_TODOS.sql")
+caminho_completo = pasta_saida
 
-with open("EXECUTAR_TODOS.sql", "w", encoding="utf-8") as master:
+with open(master_path, "w", encoding="utf-8") as master:
     master.write("-- ========================================\n")
     master.write("-- SCRIPT MESTRE - EXECUTA TODOS OS BACKUPS\n")
     master.write("-- ========================================\n\n")
     master.write("USE [SeuBancoDeDados]; -- ALTERE ESTE NOME\nGO\n\n")
     
     for i, arq_sql in enumerate(arquivos_sql, 1):
-        caminho_arquivo = os.path.join(caminho_completo, arq_sql)
         master.write(f"-- Parte {i}/{len(arquivos_sql)}\n")
-        master.write(f":r \"{caminho_arquivo}\"\nGO\n\n")
+        master.write(f":r \"{arq_sql}\"\nGO\n\n")
 
 print("✓ Criado: EXECUTAR_TODOS.sql")
 print(f"\n📁 Caminho dos arquivos: {caminho_completo}")
